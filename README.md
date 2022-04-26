@@ -29,7 +29,7 @@ Requirements
 **Build environment[Linux]**: CMake compatible compiler and build system and `libxcb-dev` and `libxcb-keysyms-dev`  
 **Build environment[MacOS]**: CMake compatible compiler and build system  
 **Build Environment[GLFW]**: GLFW 3.2+ (already included as a git submodule), requires `xorg-dev` (or XCB) package on Linux  
-**Build Environment[GLM]**: GLM 0.9.9.9+ (already included as a git submodule),
+**Build Environment[GLM]**: GLM 0.9.9.9+ (already included as a git submodule),  
 **Target Environment**: installed (latest) Vulkan capable drivers (to see anything)  
 **Target Environment**: GLFW
 
@@ -67,8 +67,8 @@ First just get everything:
     $ git clone --recurse-submodules https://github.com/xdcsystems/VulkanTest.git
 
 Then, on Windows platphorm:
-    1. Install Vulkan SDK
-    2. run build-all.bat , Visual Studio 2015 solution files will be generate
+    1. Install Vulkan SDK  
+    2. run build-all.bat , Visual Studio 2015 solution files will be generate  
 
 In many platforms CMake style build should work just fine:
 
@@ -88,6 +88,6 @@ Run
 You just run it as you would anything else.
 
 <kbd>Esc</kbd> does terminate the app.  
-<kbd>Alt</kbd> + <kbd>Enter</kbd> toggles fullscreen (might not work on some WSIplatforms).
-<kbd>q</kbd> increasing rotate speed to left side.
-<kbd>e</kbd> increasing rotate speed to right side.
+<kbd>Alt</kbd> + <kbd>Enter</kbd> toggles fullscreen (might not work on some WSIplatforms).  
+<kbd>q</kbd> increasing rotate speed to left side.  
+<kbd>e</kbd> increasing rotate speed to right side.  
