@@ -66,7 +66,7 @@ First just get everything:
 
     $ git clone --recurse-submodules https://github.com/xdcsystems/VulkanTest.git
 
-Then, on Windows platphorm:
+Then, on Windows platphorm:  
     1. Install Vulkan SDK  
     2. run build-all.bat , Visual Studio 2015 solution files will be generate  
 
