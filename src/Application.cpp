@@ -354,13 +354,13 @@ void Application::recreateSwapChain()
 
   bool isMinimized{ !curWidth || !curHeight };
 
-  const VkSwapchainKHR oldSwapchain = m_swapChain.swapChains();
+  const VkSwapchainKHR oldSwapChain = m_swapChain.swapChains();
   m_swapChain.reset();
 
   std::vector<VkSemaphore> oldImageReadySs = m_imageAvailableSemaphores; 
   m_imageAvailableSemaphores.clear();
 
-  if (oldSwapchain)
+  if (oldSwapChain)
   {
     vkDeviceWaitIdle(m_device);
 
@@ -382,13 +382,13 @@ void Application::recreateSwapChain()
     vkResetDescriptorPool(m_device, m_descriptorPool, 0);
     vkDestroyDescriptorSetLayout(m_device, m_descriptorSetLayout, nullptr);
 
-    // kill oldSwapchain later, after it is potentially used by vkCreateSwapchainKHR
+    // kill oldSwapChain later, after it is potentially used by vkCreateSwapchainKHR
   }
 
   if (isMinimized == false)
   {
     try {
-      m_swapChain.create(m_window, m_device, m_physicalDevice, m_surface, oldSwapchain);
+      m_swapChain.create(m_window, m_device, m_physicalDevice, m_surface, oldSwapChain);
 
       createRenderPass();
       createDescriptorSetLayout();
@@ -433,9 +433,9 @@ void Application::recreateSwapChain()
     m_currentFrame = 0;
   }
 
-  if (oldSwapchain)
+  if (oldSwapChain)
   {
-    m_swapChain.killSwapchain(oldSwapchain);
+    m_swapChain.killSwapchain(oldSwapChain);
 
     // per current spec, we can't really be sure these are not used :/ at least kill them after the swapchain
     // https://github.com/KhronosGroup/Vulkan-Docs/issues/152

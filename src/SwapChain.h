@@ -15,7 +15,7 @@ public:
   SwapChain();
 
 public:
-  void create(GLFWwindow* pWindow, VkDevice device, VkPhysicalDevice physicalDevice, VkSurfaceKHR surface, VkSwapchainKHR oldSwapchain = VK_NULL_HANDLE);
+  void create(GLFWwindow* pWindow, VkDevice device, VkPhysicalDevice physicalDevice, VkSurfaceKHR surface, VkSwapchainKHR oldSwapChain = VK_NULL_HANDLE);
   void createFramebuffers(VkRenderPass renderPass);
   void killFramebuffers();
   void killSwapchainImageViews();
@@ -39,7 +39,7 @@ private:
   VkSurfaceFormatKHR chooseSurfaceFormat(const std::vector<VkSurfaceFormatKHR>& availableFormats) const;
   VkPresentModeKHR choosePresentMode(const std::vector<VkPresentModeKHR>& availablePresentModes) const;
 
-  void createKHR(VkSwapchainKHR oldSwapchain = VK_NULL_HANDLE);
+  void createKHR(VkSwapchainKHR oldSwapChain = VK_NULL_HANDLE);
   void createImageViews();
   
 

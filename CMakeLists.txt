@@ -4,6 +4,11 @@ set(NAME VulkanTest)
 
 project(${NAME})
 
+# Turn on the ability to create folders to organize projects (.vcproj)
+# It creates "CMakePredefinedTargets" folder by default and adds CMake
+# defined projects like INSTALL.vcproj and ZERO_CHECK.vcproj
+set_property(GLOBAL PROPERTY USE_FOLDERS ON)
+
 set(TODO ON CACHE BOOL "Enable compiletime TODO messages")
 
 # Select WSI platform (can use cmake -D)
@@ -11,6 +16,26 @@ set(WSI "USE_PLATFORM_GLFW" CACHE STRING "WSI type used by this app")
 message("WSI: " ${WSI})
 
 set(RESOURCE_INSTALL_DIR "" CACHE PATH "Path to install resources to (leave empty for running uninstalled)")
+
+if (NOT CMAKE_ARCHIVE_OUTPUT_DIRECTORY)
+  set(CMAKE_ARCHIVE_OUTPUT_DIRECTORY "${PROJECT_BINARY_DIR}/lib/static")
+endif()
+
+if (NOT CMAKE_LIBRARY_OUTPUT_DIRECTORY)
+  set(CMAKE_LIBRARY_OUTPUT_DIRECTORY "${PROJECT_BINARY_DIR}/lib")
+endif()
+
+if (NOT CMAKE_RUNTIME_OUTPUT_DIRECTORY)
+  set(CMAKE_RUNTIME_OUTPUT_DIRECTORY "${PROJECT_BINARY_DIR}/bin")
+endif()
+
+# set output directories for all builds (Debug, Release, etc.)
+foreach( OUTPUTCONFIG ${CMAKE_CONFIGURATION_TYPES} )
+    string( TOUPPER ${OUTPUTCONFIG} OUTPUTCONFIG )
+    set( CMAKE_ARCHIVE_OUTPUT_DIRECTORY_${OUTPUTCONFIG} ${CMAKE_SOURCE_DIR}/lib )
+    set( CMAKE_LIBRARY_OUTPUT_DIRECTORY_${OUTPUTCONFIG} ${CMAKE_SOURCE_DIR}/lib )
+    set( CMAKE_RUNTIME_OUTPUT_DIRECTORY_${OUTPUTCONFIG} ${CMAKE_SOURCE_DIR}/bin )
+endforeach( OUTPUTCONFIG CMAKE_CONFIGURATION_TYPES )
 
 # Find Vulkan SDK
 if (NOT DEFINED {VULKAN_SDK})
@@ -27,52 +52,19 @@ if (NOT DEFINED {VULKAN_SDK})
 endif()
 message("Vulkan SDK path: " ${VULKAN_SDK})
 
-# Compile shaders
-#set(GLSL_DEBUG_FLAG $<$<CONFIG:Debug>:-g>)
-#set(GLSL_COMPILER ${VULKAN_SDK}/bin/glslc -mfmt=num ${GLSL_DEBUG_FLAG})
-
-set(VERT_SHADER "${CMAKE_SOURCE_DIR}/data/shaders/triangle.vert")
-#set(VERT_SHADER_INCLUDE ${VERT_SHADER}.spv.inl)
-#add_custom_command(
-#	COMMENT "Compiling vertex shader"
-#	MAIN_DEPENDENCY ${VERT_SHADER}
-#	OUTPUT ${VERT_SHADER_INCLUDE}
-#	COMMAND ${GLSL_COMPILER} -o ${VERT_SHADER_INCLUDE} ${VERT_SHADER}
-#	#VERBATIM -- TODO breaks empty generator-expression
-#)
-
-set(FRAG_SHADER "${CMAKE_SOURCE_DIR}/data/shaders/triangle.frag")
-#set(FRAG_SHADER_INCLUDE ${FRAG_SHADER}.spv.inl)
-#add_custom_command(
-#	COMMENT "Compiling fragment shader"
-#	MAIN_DEPENDENCY ${FRAG_SHADER}
-#	OUTPUT ${FRAG_SHADER_INCLUDE}
-#	COMMAND ${GLSL_COMPILER} -o ${FRAG_SHADER_INCLUDE} ${FRAG_SHADER}
-#	#VERBATIM -- TODO breaks empty generator-expression
-#)
-
-add_custom_target(
-	${PROJECT_NAME}_shaders
-	COMMENT "Compiling shaders"
-        SOURCES ${VERT_SHADER} ${FRAG_SHADER}
-	DEPENDS ${VERT_SHADER_INCLUDE} ${FRAG_SHADER_INCLUDE}
-)
-
 # Build GLFW
-if (${WSI} STREQUAL "USE_PLATFORM_GLFW")
-	set(GLFW_BUILD_DOCS OFF CACHE BOOL "" FORCE)
-	set(GLFW_BUILD_TESTS OFF CACHE BOOL "" FORCE)
-	set(GLFW_BUILD_EXAMPLES OFF CACHE BOOL "" FORCE)
+set(GLFW_BUILD_DOCS OFF CACHE BOOL "" FORCE)
+set(GLFW_BUILD_TESTS OFF CACHE BOOL "" FORCE)
+set(GLFW_BUILD_EXAMPLES OFF CACHE BOOL "" FORCE)
 
-	if (CYGWIN)
-		# Hack to make GLFW use Win32 WSI instead of X11
-		# TODO: Might be cleaner to use cross-compiling
-		unset(UNIX)
-		set(WIN32 1)
-	endif()
-
-	add_subdirectory(external/glfw)
+if (CYGWIN)
+	# Hack to make GLFW use Win32 WSI instead of X11
+	# TODO: Might be cleaner to use cross-compiling
+	unset(UNIX)
+	set(WIN32 1)
 endif()
+
+add_subdirectory(external/glfw)
 
 # glm
 include_directories(external/glm)
@@ -84,7 +76,6 @@ set(GLM_TEST_ENABLE OFF CACHE BOOL "" FORCE)
 
 add_subdirectory(${GLM_LIB_NAME})
 
-
 # VulkanTest binary
 set_property(DIRECTORY PROPERTY VS_STARTUP_PROJECT ${PROJECT_NAME})
 
@@ -93,6 +84,34 @@ file(GLOB SOURCE_HEADERS "src/*.h*")
 file(GLOB SOURCE_FILES "src/*.cpp")
 
 add_executable(${PROJECT_NAME} WIN32 ${SOURCE_HEADERS} ${SOURCE_FILES})
+
+# Compile shaders
+if (${CMAKE_HOST_SYSTEM_PROCESSOR} STREQUAL "AMD64")
+  set(GLSL_VALIDATOR "$ENV{VULKAN_SDK}/Bin/glslangValidator.exe")
+else()
+  set(GLSL_VALIDATOR "$ENV{VULKAN_SDK}/Bin32/glslangValidator.exe")
+endif()
+
+file(GLOB_RECURSE GLSL_SOURCE_FILES
+    "${PROJECT_SOURCE_DIR}/data/shaders/*.frag"
+    "${PROJECT_SOURCE_DIR}/data/shaders/*.vert"
+    )
+
+foreach(GLSL ${GLSL_SOURCE_FILES})
+  get_filename_component(FILE_NAME ${GLSL} NAME)
+  set(SPIRV "${PROJECT_SOURCE_DIR}/data/shaders/${FILE_NAME}.spv")
+  add_custom_command(
+    OUTPUT ${SPIRV}
+    COMMAND ${GLSL_VALIDATOR} -V ${GLSL} -o ${SPIRV}
+    DEPENDS ${GLSL})
+  list(APPEND SPIRV_BINARY_FILES ${SPIRV})
+endforeach(GLSL)
+
+add_custom_target( 
+	${PROJECT_NAME}_shaders 
+	DEPENDS ${SPIRV_BINARY_FILES} 
+	)
+
 add_dependencies(${PROJECT_NAME} ${PROJECT_NAME}_shaders )
 
 if(RESOURCE_INSTALL_DIR)
@@ -109,14 +128,13 @@ endif()
 
 if (MSVC)
 	target_compile_definitions(${PROJECT_NAME} PRIVATE $<$<CONFIG:Debug>:_CONSOLE>)
-        #set(CMAKE_EXE_LINKER_FLAGS "${CMAKE_EXE_LINKER_FLAGS} /SUBSYSTEM:WINDOWS /ENTRY:mainCRTStartup")
-        set_target_properties(${PROJECT_NAME} PROPERTIES COMPILE_FLAGS "/EHa")
-        set_target_properties(${PROJECT_NAME} PROPERTIES LINK_FLAGS_DEBUG "/SUBSYSTEM:CONSOLE")
-        set_target_properties(${PROJECT_NAME} PROPERTIES COMPILE_DEFINITIONS_DEBUG "_CONSOLE")
-        set_target_properties(${PROJECT_NAME} PROPERTIES LINK_FLAGS_RELWITHDEBINFO "/SUBSYSTEM:CONSOLE")
-        set_target_properties(${PROJECT_NAME} PROPERTIES COMPILE_DEFINITIONS_RELWITHDEBINFO "_CONSOLE")
-        set_target_properties(${PROJECT_NAME} PROPERTIES LINK_FLAGS_RELEASE "/SUBSYSTEM:windows /ENTRY:mainCRTStartup")
-        set_target_properties(${PROJECT_NAME} PROPERTIES LINK_FLAGS_MINSIZEREL "/SUBSYSTEM:windows /ENTRY:mainCRTStartup")
+        set_target_properties( ${PROJECT_NAME} PROPERTIES COMPILE_FLAGS "/EHa")
+        set_target_properties( ${PROJECT_NAME} PROPERTIES LINK_FLAGS_DEBUG "/SUBSYSTEM:CONSOLE")
+        set_target_properties( ${PROJECT_NAME} PROPERTIES COMPILE_DEFINITIONS_DEBUG "_CONSOLE")
+        set_target_properties( ${PROJECT_NAME} PROPERTIES LINK_FLAGS_RELWITHDEBINFO "/SUBSYSTEM:CONSOLE")
+        set_target_properties( ${PROJECT_NAME} PROPERTIES COMPILE_DEFINITIONS_RELWITHDEBINFO "_CONSOLE")
+        set_target_properties( ${PROJECT_NAME} PROPERTIES LINK_FLAGS_RELEASE "/SUBSYSTEM:windows /ENTRY:mainCRTStartup")
+        set_target_properties( ${PROJECT_NAME} PROPERTIES LINK_FLAGS_MINSIZEREL "/SUBSYSTEM:windows /ENTRY:mainCRTStartup")
 endif()
 
 if ("${CMAKE_VERSION}" VERSION_LESS 3.8.2)
@@ -158,29 +176,15 @@ find_library(
 )
 message( "Vulkan libs: " ${VULKAN_LIBRARY} )
 
-if (${WSI} STREQUAL "USE_PLATFORM_GLFW")
-	set(WSI_LIBS glfw)
-elseif (${WSI} STREQUAL "VK_USE_PLATFORM_WIN32_KHR")
-	set( WSI_LIBS )
-	add_definitions( -DUNICODE )
-elseif (${WSI} STREQUAL "VK_USE_PLATFORM_XLIB_KHR")
-	set( WSI_LIBS X11 )
-elseif (${WSI} STREQUAL "VK_USE_PLATFORM_XCB_KHR")
-	set( WSI_LIBS xcb xcb-keysyms )
-elseif (${WSI} STREQUAL "VK_USE_PLATFORM_WAYLAND_KHR")
-	set(WSI_LIBS wayland-client xkbcommon)
-endif()
+set(WSI_LIBS glfw)
 add_definitions(-D${WSI})
 
 target_link_libraries(${PROJECT_NAME} "${VULKAN_LIBRARY}" "${WSI_LIBS}" ${GLM_LIBRARIES})
 
-set(CMAKE_RUNTIME_OUTPUT_DIRECTORY "${PROJECT_SOURCE_DIR}/bin/")
-set(LIBRARY_OUTPUT_PATH ${PROJECT_SOURCE_DIR}/bin/)
-
-set_target_properties(${PROJECT_NAME}
-    PROPERTIES
-    ARCHIVE_OUTPUT_DIRECTORY "${PROJECT_SOURCE_DIR}/lib"
-    LIBRARY_OUTPUT_DIRECTORY "${PROJECT_SOURCE_DIR}/lib"
-    RUNTIME_OUTPUT_DIRECTORY "${PROJECT_SOURCE_DIR}/bin"
-)
+#set_target_properties(${PROJECT_NAME}
+#    PROPERTIES
+#    ARCHIVE_OUTPUT_DIRECTORY "${PROJECT_SOURCE_DIR}/lib/$<0:>"
+#    LIBRARY_OUTPUT_DIRECTORY "${PROJECT_SOURCE_DIR}/lib/$<0:>"
+#    RUNTIME_OUTPUT_DIRECTORY "${PROJECT_SOURCE_DIR}/bin/$<0:>"
+#)
 

@@ -92,18 +92,18 @@ SwapChainSupportDetails SwapChain::querySupport(VkPhysicalDevice physicalDevice,
   return details;
 }
 
-void SwapChain::create(GLFWwindow* pWindow, VkDevice device, VkPhysicalDevice physicalDevice, VkSurfaceKHR surface, VkSwapchainKHR oldSwapchain /* = VK_NULL_HANDLE */)
+void SwapChain::create(GLFWwindow* pWindow, VkDevice device, VkPhysicalDevice physicalDevice, VkSurfaceKHR surface, VkSwapchainKHR oldSwapChain /* = VK_NULL_HANDLE */)
 {
   m_pWindow = pWindow;
   m_device = device;
   m_physicalDevice = physicalDevice;
   m_surface = surface;
 
-  createKHR(oldSwapchain);
+  createKHR(oldSwapChain);
   createImageViews();
 }
 
-void SwapChain::createKHR(VkSwapchainKHR oldSwapchain /* = VK_NULL_HANDLE */)
+void SwapChain::createKHR(VkSwapchainKHR oldSwapChain /* = VK_NULL_HANDLE */)
 {
   const SwapChainSupportDetails swapChainSupport = querySupport(m_physicalDevice, m_surface);
   const VkSurfaceFormatKHR surfaceFormat = chooseSurfaceFormat(swapChainSupport.formats);
@@ -125,7 +125,7 @@ void SwapChain::createKHR(VkSwapchainKHR oldSwapchain /* = VK_NULL_HANDLE */)
     .imageExtent = extent,
     .imageArrayLayers = 1,
     .imageUsage = VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT,
-    .oldSwapchain = oldSwapchain
+    .oldSwapchain = oldSwapChain
   };
 
   QueueFamilyIndices indices = QueueFamilies::instance().find(m_physicalDevice, m_surface);
@@ -209,7 +209,7 @@ void SwapChain::createImageViews()
 
   for (size_t i = 0; i < m_swapChainImages.size(); i++)
   {
-    VkImageViewCreateInfo createInfo {
+    const VkImageViewCreateInfo createInfo {
       .sType = VK_STRUCTURE_TYPE_IMAGE_VIEW_CREATE_INFO,
       .image = m_swapChainImages[i],
       .viewType = VK_IMAGE_VIEW_TYPE_2D,

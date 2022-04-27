@@ -48,7 +48,7 @@ uint32_t VertexBuffer::findMemoryType(VkPhysicalDevice physicalDevice, uint32_t 
 
 VkCommandBuffer VertexBuffer::beginSingleTimeCommands() const
 {
-  VkCommandBufferAllocateInfo allocInfo {
+  const VkCommandBufferAllocateInfo allocInfo {
     .sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_ALLOCATE_INFO,
     .commandPool = m_commandPool,
     .level = VK_COMMAND_BUFFER_LEVEL_PRIMARY,
@@ -58,7 +58,7 @@ VkCommandBuffer VertexBuffer::beginSingleTimeCommands() const
   VkCommandBuffer commandBuffer;
   vkAllocateCommandBuffers(m_device, &allocInfo, &commandBuffer);
 
-  VkCommandBufferBeginInfo beginInfo {
+  const VkCommandBufferBeginInfo beginInfo {
     .sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO,
     .flags = VK_COMMAND_BUFFER_USAGE_ONE_TIME_SUBMIT_BIT,
   };
@@ -72,7 +72,7 @@ void VertexBuffer::endSingleTimeCommands(VkCommandBuffer commandBuffer) const
 {
   vkEndCommandBuffer(commandBuffer);
 
-  VkSubmitInfo submitInfo {
+  const VkSubmitInfo submitInfo {
     .sType = VK_STRUCTURE_TYPE_SUBMIT_INFO,
     .commandBufferCount = 1,
     .pCommandBuffers = &commandBuffer,
@@ -147,7 +147,7 @@ void VertexBuffer::createBuffer(VkDeviceSize size, VkBufferUsageFlags usage, VkM
 
   RESULT_HANDLER(vkCreateBuffer(m_device, &bufferInfo, nullptr, &buffer), "vkCreateBuffer");
 
-  VkMemoryRequirements memRequirements;
+  VkMemoryRequirements memRequirements{};
   vkGetBufferMemoryRequirements(m_device, buffer, &memRequirements);
 
   VkMemoryAllocateInfo allocInfo {
