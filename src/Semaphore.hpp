@@ -1,48 +1,49 @@
+#pragma once
+#include <mutex>
 
-//mutable std::recursive_mutex m_mutex;
-  mutable std::mutex m_mutex; // mutable allows const objects to be locked
-  mutable std::condition_variable m_condition_variable;
+static std::atomic<bool> pause = false;
 
-static std::condition_variable cv1;
-static std::condition_variable cv2;
-
-std::atomic<bool> pause = false;
-
-static bool KEEP_GOING = true;
-static bool framebufferResized = false;
-
-//std::lock_guard<std::recursive_mutex> locker(m_mutex);
-//std::scoped_lock<std::recursive_mutex> locker(m_mutex);
-
-void Application::createOneRedrawWorker()
+class Semaphore
 {
-  auto asyncDefault = std::async(std::launch::async, [](Application* app) {
-    app->pauseWorker();
-    app->recreateSwapChain();
-    //app->setFramebufferResized(true);
-    app->resumeWorker();
-  }, this);
-}
-
-void Application::pauseWorker()
-{
-  std::unique_lock<std::mutex> lock(m_mutex);
-  pause.store(true);
-  cv2.wait(lock);
-}
-
-void Application::checkWorkerPaused()
-{
-  std::unique_lock<std::mutex> lock(m_mutex);
-  if (pause.load()) {
-    cv2.notify_all();
-    cv1.wait(lock);
+public:
+  std::cv_status pauseWorker()
+  {
+    std::unique_lock<std::mutex> lock(m_mutex);
+    if (pause.load()) // already paused
+    {
+      lock.unlock();
+      return std::cv_status::no_timeout;
+    }
+    pause.store(true);
+    std::cv_status retval = m_cv2.wait_for(lock, std::chrono::milliseconds(100));
+    if (retval == std::cv_status::timeout)
+    {
+      pause.store(false); // not paused
+    }
+    lock.unlock();
+    return retval;
   }
-}
 
-void Application::resumeWorker()
-{
-  std::unique_lock<std::mutex> lock(m_mutex);
-  pause.store(false);
-  cv1.notify_all();
-}
+  void checkWorkerPaused()
+  {
+    std::unique_lock<std::mutex> lock(m_mutex);
+    if (pause.load()) {
+      m_cv2.notify_all();
+      m_cv1.wait(lock, []() { return pause.load() == false; });
+    }
+    lock.unlock();
+  }
+
+  void resumeWorker()
+  {
+    std::scoped_lock lock(m_mutex);
+    pause.store(false);
+    m_cv1.notify_all();
+  }
+
+protected:
+  mutable std::mutex m_mutex; // mutable allows const objects to be locked
+
+  std::condition_variable m_cv1;
+  std::condition_variable m_cv2;
+};

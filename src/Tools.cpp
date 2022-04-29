@@ -71,8 +71,7 @@ bool Tools::checkValidationLayerSupport() const
 std::vector<const char*> Tools::getRequiredExtensions(bool enableValidationLayers) const
 {
   uint32_t glfwExtensionCount{ 0 };
-  const char** glfwExtensions;
-  glfwExtensions = glfwGetRequiredInstanceExtensions(&glfwExtensionCount);
+  const char** glfwExtensions = glfwGetRequiredInstanceExtensions(&glfwExtensionCount);
 
   std::vector<const char*> extensions(glfwExtensions, glfwExtensions + glfwExtensionCount);
 

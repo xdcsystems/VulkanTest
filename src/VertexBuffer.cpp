@@ -7,16 +7,20 @@
 
 #include "ErrorHandling.hpp"
 
-struct UniformBufferObject {
-  alignas(16) glm::mat4 model;
-  alignas(16) glm::mat4 view;
-  alignas(16) glm::mat4 proj;
-};
+//const std::vector<Vertex> vertices{
+//    { {0.0f, -1.25f, 0.0f}, {1.0f, 0.0f, 0.0f}},
+//    { {1.1f,  0.58f, 0.0f}, {0.0f, 1.0f, 0.0f}},
+//    { {-1.1f, 0.58f, 0.0f}, {0.0f, 0.0f, 1.0f}}
+//    //{{-0.5f, -0.5f}, {1.0f, 0.0f, 0.0f}},
+//    //{{0.5f, -0.5f}, {0.0f, 1.0f, 0.0f}},
+//    //{{0.5f, 0.5f}, {0.0f, 0.0f, 1.0f}},
+//    //{{-0.5f, 0.5f}, {1.0f, 1.0f, 1.0f}}
+//};
 
 const std::vector<Vertex> vertices{
-    {{0.0f, -1.25f}, {1.0f, 0.0f, 0.0f}},
-    {{1.1f, 0.58f}, {0.0f, 1.0f, 0.0f}},
-    {{-1.1f, 0.58f}, {0.0f, 0.0f, 1.0f}}
+    { {0.0f, -1.25f}, {1.0f, 0.0f, 0.0f}},
+    { {1.1f,  0.58f}, {0.0f, 1.0f, 0.0f}},
+    { {-1.1f, 0.58f}, {0.0f, 0.0f, 1.0f}}
     //{{-0.5f, -0.5f}, {1.0f, 0.0f, 0.0f}},
     //{{0.5f, -0.5f}, {0.0f, 1.0f, 0.0f}},
     //{{0.5f, 0.5f}, {0.0f, 0.0f, 1.0f}},
@@ -28,7 +32,7 @@ const std::vector<uint16_t> indices = {
 };
 
 std::atomic<float> spin_angle = 0.01f;
-std::atomic<float> spin_increment = 0.001f;
+std::atomic<float> spin_increment = 0.1f;
 
 uint32_t VertexBuffer::findMemoryType(VkPhysicalDevice physicalDevice, uint32_t typeFilter, VkMemoryPropertyFlags properties) const
 {
@@ -248,10 +252,10 @@ void VertexBuffer::updateUniformBuffer(uint32_t currentImage, const VkExtent2D& 
   );
   
   ubo.model = glm::rotate(
-    //glm::mat4(1.0f), 
-    ubo.model,
-    //time * glm::radians(spin_angle.load()),
-    glm::radians(spin_angle.load()),
+    glm::mat4(1.0f), 
+    //ubo.model,
+    time * glm::radians(45.0f + spin_angle.load()),
+    //glm::radians(spin_angle.load()),
     glm::vec3(0.0f, 0.0f, 1.0f)
   );
 

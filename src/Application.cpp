@@ -24,45 +24,7 @@ const bool enableValidationLayers = true;
 
 // Since C++11, std::atomic<bool>variables at the global scope are considered thread-safe to access and modify
 static std::atomic<bool> sKeepGoing{ true };
-
-//////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
-static std::condition_variable cv1;
-static std::condition_variable cv2;
-
-std::atomic<bool> pause = false;
-std::atomic<bool> swapchainRecreated = false;
-
-std::cv_status Application::pauseWorker()
-{
-  std::unique_lock<std::mutex> lock(m_mutex);
-  if (pause.load()) // already paused
-  {
-    lock.unlock();
-    return std::cv_status::no_timeout;
-  }
-  pause.store(true);
-  std::cv_status retval = cv2.wait_for(lock, std::chrono::milliseconds(100));
-  lock.unlock();
-  return retval;
-}
-
-void Application::checkWorkerPaused()
-{
-  std::unique_lock<std::mutex> lock(m_mutex);
-  if (pause.load()) {
-    cv2.notify_all();
-    cv1.wait(lock, []() { return pause.load() == false; });
-  }
-  lock.unlock();
-}
-
-void Application::resumeWorker()
-{
-  std::scoped_lock lock(m_mutex);
-  pause.store(false);
-  cv1.notify_all();
-}
-//////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+static std::atomic<bool> swapchainRecreated{ false };
 
 extern std::atomic<float> spin_angle;
 extern std::atomic<float> spin_increment;
@@ -77,12 +39,10 @@ void Application::rotateLeft()
   spin_angle -= spin_increment;
 }
 
-
 Application::Application(std::string appName)
   : m_window(NULL)
   , m_physicalDevice(VK_NULL_HANDLE)
   , m_currentFrame(0)
-  , m_framebufferResized(false)
   , m_appName(appName)
 {
   initWindow();
@@ -128,29 +88,32 @@ Application::~Application()
   glfwTerminate();
 }
 
-void Application::setFramebufferResized(bool resized)
-{
-  m_framebufferResized.store(resized);
-}
-
-bool Application::getFramebufferResized() const
-{
-  return m_framebufferResized.load();
-}
-
 void Application::run() 
 {
   // showWindow
   recreateSwapChain();
   glfwShowWindow(m_window);
 
-  auto asyncDefault = std::async(std::launch::async, [](Application* app) {
+  auto asyncDefault = std::async(std::launch::async, [this]() {
     while (sKeepGoing.load())
     {
-      app->checkWorkerPaused();
-      app->drawFrame();
+      checkWorkerPaused();
+      try
+      {
+        drawFrame();
+      }
+      catch (const VulkanResultException& vkE)
+      {
+        logger << "drawFrame, VkResult exception: "
+          << vkE.file << ":" << vkE.line << ":" << vkE.func << "() " << vkE.source << "() returned " << vkE.result
+          << std::endl;
+      }
+      catch (...)
+      {
+        logger << "drawFrame: unrecognized exception." << std::endl;
+      }
     }
-  }, this);
+  });
 
   // mainLoop
   while (!glfwWindowShouldClose(m_window))
@@ -183,25 +146,24 @@ void Application::initWindow()
   {
     const auto app = reinterpret_cast<Application*>(glfwGetWindowUserPointer(window));
     const int iconified = glfwGetWindowAttrib(window, GLFW_ICONIFIED);
-
-    static int curWidth(0), curHeight(0);
-    if (iconified == GLFW_FALSE)
-    {
-      glfwGetFramebufferSize(window, &curWidth, &curHeight);
-    }
-    bool isMinimized { iconified == GLFW_TRUE || !curWidth || !curHeight };
+    const bool isMinimized { iconified == GLFW_TRUE || !width || !height };
 
     if (app->pauseWorker() == std::cv_status::timeout || isMinimized)
     {
+      std::cout << "cant stop" << std::endl;
       return;
     };
+
     if (swapchainRecreated.load())  // already recreated from worker
     {
+      std::cout << "already recreated" << std::endl;
       swapchainRecreated.store(false);
       app->resumeWorker();
       return;
     }
-    app->setFramebufferResized(true);
+
+    std::cout << "recreateSwapChain" << std::endl;
+    app->recreateSwapChain(width, height);
     app->resumeWorker();
   };
   glfwSetFramebufferSizeCallback(m_window, framebufferResizeCallback);
@@ -212,7 +174,6 @@ void Application::initWindow()
   //  if (button == GLFW_MOUSE_BUTTON_LEFT && action == GLFW_PRESS)
   //  {
   //    std::cout << "mouseButtonCallback" << std::endl;
-  //    //app->setFramebufferResized(true);
   //    app->recreateSwapChain();
   //    app->drawFrame();
   //  }
@@ -266,7 +227,7 @@ void Application::createInstance()
     .pApplicationInfo = &appInfo
   };
 
-  const std::vector<const char*> extensions = Tools::instance().getRequiredExtensions(enableValidationLayers);
+  const std::vector<const char*> extensions{ Tools::instance().getRequiredExtensions(enableValidationLayers) };
   createInfo.enabledExtensionCount = static_cast<uint32_t>(extensions.size());
   createInfo.ppEnabledExtensionNames = extensions.data();
 
@@ -285,6 +246,20 @@ void Application::createInstance()
 void Application::createSurface() 
 {
   RESULT_HANDLER(glfwCreateWindowSurface(m_instance, m_window, nullptr, &m_surface), "glfwCreateWindowSurface");
+}
+
+bool Application::isDeviceSuitable(VkPhysicalDevice device) const
+{
+  if (!Tools::instance().checkDeviceExtensionSupport(device))
+  {
+    return false;
+  }
+
+  QueueFamilyIndices indices = QueueFamilies::instance().find(device, m_surface);
+  const SwapChainSupportDetails swapChainSupport = m_swapChain.querySupport(device, m_surface);
+  const bool swapChainAdequate = !swapChainSupport.formats.empty() && !swapChainSupport.presentModes.empty();
+
+  return indices.isComplete() && swapChainAdequate;
 }
 
 void Application::pickPhysicalDevice() 
@@ -313,7 +288,7 @@ void Application::createLogicalDevice()
   std::vector<VkDeviceQueueCreateInfo> queueCreateInfos;
   std::set<uint32_t> uniqueQueueFamilies { indices.graphicsFamily.value(), indices.presentFamily.value() };
 
-  float queuePriority = 1.0f;
+  const float queuePriority = 1.0f;
   for (uint32_t queueFamily : uniqueQueueFamilies) 
   {
     queueCreateInfos.push_back({
@@ -347,126 +322,21 @@ void Application::createLogicalDevice()
   vkGetDeviceQueue(m_device, indices.presentFamily.value(), 0, &m_presentQueue);
 }
 
-void Application::recreateSwapChain()
-{
-  static int curWidth(0), curHeight(0);
-  glfwGetFramebufferSize(m_window, &curWidth, &curHeight);
-
-  bool isMinimized{ !curWidth || !curHeight };
-
-  const VkSwapchainKHR oldSwapChain = m_swapChain.swapChains();
-  m_swapChain.reset();
-
-  std::vector<VkSemaphore> oldImageReadySs = m_imageAvailableSemaphores; 
-  m_imageAvailableSemaphores.clear();
-
-  if (oldSwapChain)
-  {
-    vkDeviceWaitIdle(m_device);
-
-    for (size_t i = 0; i < MAX_FRAMES_IN_FLIGHT; i++)
-    {
-      vkDestroySemaphore(m_device, m_renderFinishedSemaphores[i], nullptr);
-      //vkDestroySemaphore(m_device, m_imageAvailableSemaphores[i], nullptr);
-      vkDestroyFence(m_device, m_inFlightFences[i], nullptr);
-    }
-
-    vkDestroyPipeline(m_device, m_graphicsPipeline, nullptr);
-    vkDestroyPipelineLayout(m_device, m_pipelineLayout, nullptr);
-    vkDestroyRenderPass(m_device, m_renderPass, nullptr);
-
-    m_swapChain.killFramebuffers();
-    m_swapChain.killSwapchainImageViews();
-
-    vkResetCommandPool(m_device, m_commandPool, 0);
-    vkResetDescriptorPool(m_device, m_descriptorPool, 0);
-    vkDestroyDescriptorSetLayout(m_device, m_descriptorSetLayout, nullptr);
-
-    // kill oldSwapChain later, after it is potentially used by vkCreateSwapchainKHR
-  }
-
-  if (isMinimized == false)
-  {
-    try {
-      m_swapChain.create(m_window, m_device, m_physicalDevice, m_surface, oldSwapChain);
-
-      createRenderPass();
-      createDescriptorSetLayout();
-      createGraphicsPipeline();
-
-      m_swapChain.createFramebuffers(m_renderPass);
-
-      createDescriptorSets();
-
-      static const VkClearValue clearValues[2]{
-        {.color = { { 0.0f, 0.0f, 0.0f, 1.0f } } },
-        {.depthStencil = { 1.0f, 0 } }
-      };
-
-      const auto swapchainImages = enumerate<VkImage>(m_device, m_swapChain.swapChains());
-      for (size_t i = 0; i < swapchainImages.size(); ++i)
-      {
-        m_vertexBuffer.renderPass(
-          m_swapChain.renderPassInfo(m_renderPass, i, 2, clearValues),
-          m_commandBuffers[i],// [(i) % MAX_FRAMES_IN_FLIGHT] ,
-          m_graphicsPipeline,
-          m_pipelineLayout,
-          &m_descriptorSets[i]// [(i) % MAX_FRAMES_IN_FLIGHT]
-        );
-      }
-
-      createSyncObjects();
-    }
-    catch (const VulkanResultException& vkE)
-    {
-      logger << "********** VulkanResultException : " << std::endl
-       << vkE.file << ":" << vkE.line << ":" << vkE.func << "() " << vkE.source << "() returned " << vkE.result << std::endl;
-    }
-    catch (const std::exception& ex)
-    {
-      logger << "********** Exception: " << ex.what() << std::endl;
-    }
-    catch (...)
-    {
-      logger << "********* Exception: unhandled" << std::endl;
-    }
-    m_currentFrame = 0;
-  }
-
-  if (oldSwapChain)
-  {
-    m_swapChain.killSwapchain(oldSwapChain);
-
-    // per current spec, we can't really be sure these are not used :/ at least kill them after the swapchain
-    // https://github.com/KhronosGroup/Vulkan-Docs/issues/152
-    if (oldImageReadySs.empty())
-    {
-      return;
-    }
-
-    for (size_t i = 0; i < oldImageReadySs.size(); i++)
-    {
-      vkDestroySemaphore(m_device, oldImageReadySs[i], nullptr);
-    }
-  }
-  swapchainRecreated.store(!isMinimized);
-}
-
 void Application::createRenderPass() 
 {
   const VkAttachmentDescription colorAttachment = m_swapChain.colorAttachment();
   
-  const VkAttachmentReference colorAttachmentRef {
+  static const VkAttachmentReference colorAttachmentRef {
     .layout = VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL
   };
 
-  const  VkSubpassDescription subpass {
+  static const  VkSubpassDescription subpass {
     .pipelineBindPoint = VK_PIPELINE_BIND_POINT_GRAPHICS,
     .colorAttachmentCount = 1,
     .pColorAttachments = &colorAttachmentRef
   };
 
-  const  VkSubpassDependency dependency {
+  static const  VkSubpassDependency dependency {
     .srcSubpass = VK_SUBPASS_EXTERNAL,
     .srcStageMask = VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT,
     .dstStageMask = VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT,
@@ -488,7 +358,7 @@ void Application::createRenderPass()
 
 void Application::createDescriptorSetLayout() 
 {
-  const VkDescriptorSetLayoutBinding uboLayoutBinding {
+  static const VkDescriptorSetLayoutBinding uboLayoutBinding {
     .binding = 0,
     .descriptorType = VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER,
     .descriptorCount = 1,
@@ -496,7 +366,7 @@ void Application::createDescriptorSetLayout()
     .pImmutableSamplers = nullptr,
   };
 
-  const VkDescriptorSetLayoutCreateInfo layoutInfo{
+  static const VkDescriptorSetLayoutCreateInfo layoutInfo {
     .sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_LAYOUT_CREATE_INFO,
     .bindingCount = 1,
     .pBindings = &uboLayoutBinding,
@@ -505,10 +375,24 @@ void Application::createDescriptorSetLayout()
   RESULT_HANDLER(vkCreateDescriptorSetLayout(m_device, &layoutInfo, nullptr, &m_descriptorSetLayout), "vkCreateDescriptorSetLayout");
 }
 
+VkShaderModule Application::createShaderModule(const std::vector<char> &code) const
+{
+  const VkShaderModuleCreateInfo createInfo {
+    .sType = VK_STRUCTURE_TYPE_SHADER_MODULE_CREATE_INFO,
+    .codeSize = code.size(),
+    .pCode = reinterpret_cast<const uint32_t*>(code.data())
+  };
+
+  VkShaderModule shaderModule;
+  RESULT_HANDLER(vkCreateShaderModule(m_device, &createInfo, nullptr, &shaderModule), "vkCreateShaderModule");
+
+  return shaderModule;
+}
+
 void Application::createGraphicsPipeline() 
 {
-  static const std::vector<char> vertShaderCode = Tools::instance().readFile("shaders/triangle.vert.spv");
-  static const std::vector<char> fragShaderCode = Tools::instance().readFile("shaders/triangle.frag.spv");
+  static const std::vector<char> vertShaderCode{ Tools::instance().readFile("shaders/triangle.vert.spv") };
+  static const std::vector<char> fragShaderCode{ Tools::instance().readFile("shaders/triangle.frag.spv") };
 
   const VkShaderModule vertShaderModule = createShaderModule(vertShaderCode);
   const VkShaderModule fragShaderModule = createShaderModule(fragShaderCode);
@@ -579,7 +463,7 @@ void Application::createGraphicsPipeline()
     .colorWriteMask = VK_COLOR_COMPONENT_R_BIT | VK_COLOR_COMPONENT_G_BIT | VK_COLOR_COMPONENT_B_BIT | VK_COLOR_COMPONENT_A_BIT,
   };
 
-  const VkPipelineColorBlendStateCreateInfo colorBlending {
+  static const VkPipelineColorBlendStateCreateInfo colorBlending {
     .sType = VK_STRUCTURE_TYPE_PIPELINE_COLOR_BLEND_STATE_CREATE_INFO,
     .logicOpEnable = VK_FALSE,
     .logicOp = VK_LOGIC_OP_COPY,
@@ -632,22 +516,24 @@ void Application::createCommandPool()
 
 void Application::createDescriptorPool()
 {
-  VkDescriptorPoolSize poolSize{};
-  poolSize.type = VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER;
-  poolSize.descriptorCount = static_cast<uint32_t>(MAX_FRAMES_IN_FLIGHT);
+  static const VkDescriptorPoolSize poolSize {
+    .type = VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER,
+    .descriptorCount = static_cast<uint32_t>(MAX_FRAMES_IN_FLIGHT)
+  };
 
-  VkDescriptorPoolCreateInfo poolInfo{};
-  poolInfo.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_POOL_CREATE_INFO;
-  poolInfo.poolSizeCount = 1;
-  poolInfo.pPoolSizes = &poolSize;
-  poolInfo.maxSets = static_cast<uint32_t>(MAX_FRAMES_IN_FLIGHT);
+  static const VkDescriptorPoolCreateInfo poolInfo {
+    .sType = VK_STRUCTURE_TYPE_DESCRIPTOR_POOL_CREATE_INFO,
+    .maxSets = static_cast<uint32_t>(MAX_FRAMES_IN_FLIGHT),
+    .poolSizeCount = 1,
+    .pPoolSizes = &poolSize,
+  };
 
   RESULT_HANDLER(vkCreateDescriptorPool(m_device, &poolInfo, nullptr, &m_descriptorPool), "vkCreateDescriptorPool");
 }
 
 void  Application::createDescriptorSets() 
 {
-  std::vector<VkDescriptorSetLayout> layouts(MAX_FRAMES_IN_FLIGHT, m_descriptorSetLayout);
+  const std::vector<VkDescriptorSetLayout> layouts(MAX_FRAMES_IN_FLIGHT, m_descriptorSetLayout);
   
   const VkDescriptorSetAllocateInfo allocInfo {
     .sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_ALLOCATE_INFO,
@@ -697,11 +583,11 @@ void Application::createSyncObjects()
   m_renderFinishedSemaphores.resize(MAX_FRAMES_IN_FLIGHT);
   m_inFlightFences.resize(MAX_FRAMES_IN_FLIGHT);
 
-  const VkSemaphoreCreateInfo semaphoreInfo {
+  static const VkSemaphoreCreateInfo semaphoreInfo {
     .sType = VK_STRUCTURE_TYPE_SEMAPHORE_CREATE_INFO
   };
 
-  const VkFenceCreateInfo fenceInfo {
+  static const VkFenceCreateInfo fenceInfo {
     .sType = VK_STRUCTURE_TYPE_FENCE_CREATE_INFO,
     .flags = VK_FENCE_CREATE_SIGNALED_BIT
   };
@@ -716,6 +602,95 @@ void Application::createSyncObjects()
   }
 }
 
+void Application::recreateSwapChain(int width /*= 0*/, int height /*= 0*/)
+{
+  int curWidth(width), curHeight(height);
+
+  if (!width || !height)
+  {
+    glfwGetFramebufferSize(m_window, &curWidth, &curHeight);
+  }
+
+  const bool isMinimized{ !curWidth || !curHeight };
+
+  const VkSwapchainKHR oldSwapChain = m_swapChain.swapChains();
+  m_swapChain.reset();
+
+  std::vector<VkSemaphore> oldImageReadySs = std::move(m_imageAvailableSemaphores);
+
+  if (oldSwapChain)
+  {
+    vkDeviceWaitIdle(m_device);
+
+    for (size_t i = 0; i < MAX_FRAMES_IN_FLIGHT; i++)
+    {
+      vkDestroySemaphore(m_device, m_renderFinishedSemaphores[i], nullptr);
+      vkDestroyFence(m_device, m_inFlightFences[i], nullptr);
+    }
+    // kill imageReadySs later when oldSwapchain is destroyed
+
+    vkDestroyPipeline(m_device, m_graphicsPipeline, nullptr);
+    vkDestroyPipelineLayout(m_device, m_pipelineLayout, nullptr);
+    vkDestroyRenderPass(m_device, m_renderPass, nullptr);
+
+    m_swapChain.killFramebuffers();
+    m_swapChain.killSwapchainImageViews();
+
+    vkResetCommandPool(m_device, m_commandPool, 0);
+    vkResetDescriptorPool(m_device, m_descriptorPool, 0);
+    vkDestroyDescriptorSetLayout(m_device, m_descriptorSetLayout, nullptr);
+
+    // kill oldSwapChain later, after it is potentially used by vkCreateSwapchainKHR
+  }
+
+  if (isMinimized == false)
+  {
+    m_swapChain.create(m_window, m_device, m_physicalDevice, m_surface, oldSwapChain);
+
+    createRenderPass();
+    createDescriptorSetLayout();
+    createGraphicsPipeline();
+
+    m_swapChain.createFramebuffers(m_renderPass);
+
+    createDescriptorSets();
+
+    static const VkClearValue clearValues[2]{
+      {.color = { { 0.0f, 0.0f, 0.0f, 1.0f } } },
+      {.depthStencil = { 1.0f, 0 } }
+    };
+
+    const auto swapchainImages = enumerate<VkImage>(m_device, m_swapChain.swapChains());
+    for (size_t i = 0; i < swapchainImages.size(); ++i)
+    {
+      m_vertexBuffer.renderPass(
+        m_swapChain.renderPassInfo(m_renderPass, i, 2, clearValues),
+        m_commandBuffers[i],// [(i) % MAX_FRAMES_IN_FLIGHT] ,
+        m_graphicsPipeline,
+        m_pipelineLayout,
+        &m_descriptorSets[i]// [(i) % MAX_FRAMES_IN_FLIGHT]
+      );
+    }
+
+    createSyncObjects();
+
+    m_currentFrame = 0;
+  }
+
+  if (oldSwapChain)
+  {
+    m_swapChain.killSwapchain(oldSwapChain);
+
+    // per current spec, we can't really be sure these are not used :/ at least kill them after the swapchain
+    // https://github.com/KhronosGroup/Vulkan-Docs/issues/152
+    for (const auto semaphore : oldImageReadySs)
+    {
+      vkDestroySemaphore(m_device, semaphore, nullptr);
+    }
+  }
+  swapchainRecreated.store(!isMinimized);
+}
+
 void Application::drawFrame()
 {
   static uint32_t imageIndex(0);
@@ -726,9 +701,9 @@ void Application::drawFrame()
     recreateSwapChain();
   }
   // Ensure no more than FRAME_LAG renderings are outstanding
-  vkWaitForFences(m_device, 1, &m_inFlightFences[m_currentFrame], VK_TRUE, UINT64_MAX);
-  vkResetFences(m_device, 1, &m_inFlightFences[m_currentFrame]);
-  
+  RESULT_HANDLER(vkWaitForFences(m_device, 1, &m_inFlightFences[m_currentFrame], VK_TRUE, UINT64_MAX), "vkWaitForFences");
+  RESULT_HANDLER(vkResetFences(m_device, 1, &m_inFlightFences[m_currentFrame]), "vkResetFences");
+    
   do {
     // Get the index of the next available swapchain image:
     result = m_swapChain.acquireNextImageKHR(m_imageAvailableSemaphores[m_currentFrame], &imageIndex);
@@ -751,7 +726,7 @@ void Application::drawFrame()
       assert(!result);
     }
   } while (result != VK_SUCCESS);
-
+  
   m_vertexBuffer.updateUniformBuffer(m_currentFrame, m_swapChain.extent());
 
   const VkSemaphore waitSemaphores[] { m_imageAvailableSemaphores[m_currentFrame] };
@@ -771,7 +746,7 @@ void Application::drawFrame()
   };
 
   RESULT_HANDLER(vkQueueSubmit(m_graphicsQueue, 1, &submitInfo, m_inFlightFences[m_currentFrame]), "vkQueueSubmit");
-
+  
   const VkSwapchainKHR swapChains[] { { m_swapChain.swapChains() } };
   const VkPresentInfoKHR presentInfo {
     .sType = VK_STRUCTURE_TYPE_PRESENT_INFO_KHR,
@@ -783,12 +758,11 @@ void Application::drawFrame()
   };
 
   result = vkQueuePresentKHR(m_presentQueue, &presentInfo);
-
+  
   m_currentFrame = (m_currentFrame + 1) % MAX_FRAMES_IN_FLIGHT;
 
-  if (result == VK_ERROR_OUT_OF_DATE_KHR || result == VK_SUBOPTIMAL_KHR || m_framebufferResized.load())
+  if (result == VK_ERROR_OUT_OF_DATE_KHR || result == VK_SUBOPTIMAL_KHR)
   {
-    m_framebufferResized.store(false);
     recreateSwapChain();
   }
   else if (result == VK_ERROR_SURFACE_LOST_KHR) {
@@ -800,32 +774,3 @@ void Application::drawFrame()
     assert(!result);
   }
 }
-
-VkShaderModule Application::createShaderModule(const std::vector<char>& code) const
-{
-  const VkShaderModuleCreateInfo createInfo {
-    .sType = VK_STRUCTURE_TYPE_SHADER_MODULE_CREATE_INFO,
-    .codeSize = code.size(),
-    .pCode = reinterpret_cast<const uint32_t*>(code.data())
-  };
-
-  VkShaderModule shaderModule;
-  RESULT_HANDLER(vkCreateShaderModule(m_device, &createInfo, nullptr, &shaderModule), "vkCreateShaderModule");
-
-  return shaderModule;
-}
-
-bool Application::isDeviceSuitable(VkPhysicalDevice device) const
-{
-  if (!Tools::instance().checkDeviceExtensionSupport(device))
-  {
-    return false;
-  }
-
-  QueueFamilyIndices indices = QueueFamilies::instance().find(device, m_surface);
-  const SwapChainSupportDetails swapChainSupport = m_swapChain.querySupport(device, m_surface);
-  const bool swapChainAdequate = !swapChainSupport.formats.empty() && !swapChainSupport.presentModes.empty();
-
-  return indices.isComplete() && swapChainAdequate;
-}
-

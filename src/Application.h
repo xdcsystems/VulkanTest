@@ -1,11 +1,12 @@
 #pragma once
+
 #include <vector>
-#include <mutex>
 
 #define GLFW_INCLUDE_NONE // Actually means include no OpenGL header
 #define GLFW_INCLUDE_VULKAN
 #include <GLFW/glfw3.h>
 
+#include "Semaphore.hpp"
 #include "SwapChain.h"
 #include "KeyBoard.h"
 #include "VertexBuffer.h"
@@ -14,30 +15,16 @@
 struct QueueFamilyIndices;
 struct SwapChainSupportDetails;
 
- struct WindowSize 
- {
-  int width;
-  int height;
-};
-
- 
-class Application 
+class Application : public Semaphore
 {
 public:
   Application(std::string appName);
   ~Application();
 
-  std::cv_status pauseWorker();
-  void checkWorkerPaused();
-  void resumeWorker();
-
   void run();
   
-  void setFramebufferResized(bool resized);
-  bool getFramebufferResized() const;
-
   void drawFrame();
-  void recreateSwapChain();
+  void recreateSwapChain(int width = 0, int height = 0);
 
   void rotateRight();
   void rotateLeft();
@@ -99,11 +86,5 @@ private:
   std::vector<VkFence> m_inFlightFences;
 
   uint32_t m_currentFrame;
-  std::atomic<bool>  m_framebufferResized;
-
   std::string m_appName;
-
-  mutable std::mutex m_mutex; // mutable allows const objects to be locked
-  mutable std::condition_variable m_condition_variable;
-
 };
