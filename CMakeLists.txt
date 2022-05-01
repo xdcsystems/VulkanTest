@@ -1,4 +1,4 @@
-cmake_minimum_required(VERSION 3.7 FATAL_ERROR)
+cmake_minimum_required(VERSION 3.14.7 FATAL_ERROR)
 set(CMAKE_MODULE_PATH ${CMAKE_MODULE_PATH} "${CMAKE_SOURCE_DIR}/cmake")
 set(NAME VulkanTest)
 
@@ -108,8 +108,9 @@ foreach(GLSL ${GLSL_SOURCE_FILES})
 endforeach(GLSL)
 
 add_custom_target( 
-	${PROJECT_NAME}_shaders 
+	${PROJECT_NAME}_shaders
 	DEPENDS ${SPIRV_BINARY_FILES} 
+	SOURCES ${GLSL_SOURCE_FILES}
 	)
 
 add_dependencies(${PROJECT_NAME} ${PROJECT_NAME}_shaders )
@@ -137,17 +138,7 @@ if (MSVC)
         set_target_properties( ${PROJECT_NAME} PROPERTIES LINK_FLAGS_MINSIZEREL "/SUBSYSTEM:windows /ENTRY:mainCRTStartup")
 endif()
 
-if ("${CMAKE_VERSION}" VERSION_LESS 3.8.2)
-	set_target_properties(
-		${PROJECT_NAME}
-		PROPERTIES
-			CXX_STANDARD 17
-			CXX_STANDARD_REQUIRED YES
-			CXX_EXTENSIONS NO
-	)
-else()
-	target_compile_features(${PROJECT_NAME} PRIVATE cxx_std_17)
-endif()
+target_compile_features(${PROJECT_NAME} PRIVATE cxx_std_20)
 
 find_path(
 	VULKAN_INCLUDE vulkan/vulkan.h

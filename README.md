@@ -23,7 +23,7 @@ Requirements
 ----------------------------
 
 **OS**: Windows or Linux  
-**Language**: C++17  
+**Language**: C++20  
 **Build environment**: (latest) [Vulkan SDK](https://vulkan.lunarg.com/sdk/home) (requires `VULKAN_SDK` variable being set)  
 **Build environment[Windows]**: Visual Studio, Cygwin, or MinGW (or IDEs running on top of them)  
 **Build environment[Linux]**: CMake compatible compiler and build system and `libxcb-dev` and `libxcb-keysyms-dev`  
@@ -68,7 +68,7 @@ First just get everything:
 
 Then, on Windows platphorm:  
     1. Install Vulkan SDK  
-    2. run build-all.bat , Visual Studio 2015 solution files will be generate  
+    2. run build-all.bat , Visual Studio 2019 solution files will be generate  
 
 In many platforms CMake style build should work just fine:
 

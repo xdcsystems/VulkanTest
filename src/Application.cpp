@@ -136,7 +136,10 @@ void Application::initVulkan()
 
   m_vertexBuffer.create(m_device, m_physicalDevice, m_graphicsQueue, m_commandPool);
 
+  createDescriptorSetLayout();
   createDescriptorPool();
+  createDescriptorSets();
+
   createCommandBuffers();
 }
 
@@ -628,9 +631,6 @@ void Application::recreateSwapChain(int width /*= 0*/, int height /*= 0*/)
     m_swapChain.killSwapchainImageViews();
 
     vkResetCommandPool(m_device, m_commandPool, 0);
-    vkResetDescriptorPool(m_device, m_descriptorPool, 0);
-    vkDestroyDescriptorSetLayout(m_device, m_descriptorSetLayout, nullptr);
-
     // kill oldSwapChain later, after it is potentially used by vkCreateSwapchainKHR
   }
 
@@ -639,12 +639,9 @@ void Application::recreateSwapChain(int width /*= 0*/, int height /*= 0*/)
     m_swapChain.create(m_window, m_device, m_physicalDevice, m_surface, oldSwapChain);
 
     createRenderPass();
-    createDescriptorSetLayout();
     createGraphicsPipeline();
 
     m_swapChain.createFramebuffers(m_renderPass);
-
-    createDescriptorSets();
 
     static const VkClearValue clearValues[2] {
       {.color = { { 0.0f, 0.0f, 0.0f, 1.0f } } },
