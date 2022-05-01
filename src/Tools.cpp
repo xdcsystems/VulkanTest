@@ -25,11 +25,7 @@ std::string Tools::getShadersPath() const
 std::vector<char> Tools::readFile(const std::string& filename) const
 {
   std::ifstream file(getShadersPath() + filename, std::ios::ate | std::ios::binary);
-
-  if (!file.is_open())
-  {
-    throw std::runtime_error("failed to open file!");
-  }
+  RESULT_HANDLER_EX(!file.is_open(), VK_ERROR_INITIALIZATION_FAILED, "failed to open file!");
 
   size_t fileSize = (size_t)file.tellg();
   std::vector<char> buffer(fileSize);

@@ -32,6 +32,7 @@ public:
 private:
   void initWindow();
   void initVulkan();
+  void initKeyBoard();
 
   void setupDebugMessenger();
   void pickPhysicalDevice();

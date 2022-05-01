@@ -23,7 +23,7 @@ QueueFamilyIndices QueueFamilies::find(VkPhysicalDevice device, VkSurfaceKHR sur
       indices.graphicsFamily = i;
     }
 
-    VkBool32 presentSupport = false;
+    VkBool32 presentSupport{ false };
     vkGetPhysicalDeviceSurfaceSupportKHR(device, i, surface, &presentSupport);
 
     if (presentSupport)

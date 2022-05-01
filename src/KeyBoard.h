@@ -11,6 +11,5 @@ public:
 private:
   static GLFWmonitor* getCurrentMonitor(GLFWwindow* window);
   static void toggleFullscreen(GLFWwindow* window);
-
 };
 

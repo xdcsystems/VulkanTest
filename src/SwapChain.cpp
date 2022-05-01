@@ -71,16 +71,10 @@ VkPresentModeKHR SwapChain::choosePresentMode(const std::vector<VkPresentModeKHR
 SwapChainSupportDetails SwapChain::querySupport(VkPhysicalDevice physicalDevice, VkSurfaceKHR surface) const
 {
   const auto formats = enumerate<VkSurfaceFormatKHR>(physicalDevice, surface);
-  if (formats.empty())
-  {
-    throw "No surface formats offered by Vulkan!";
-  }
+  RESULT_HANDLER_EX(formats.empty(), VK_ERROR_INITIALIZATION_FAILED, "No surface formats offered by Vulkan!");
 
   const auto presentModes = enumerate<VkPresentModeKHR, VkPhysicalDevice, VkSurfaceKHR>(physicalDevice, surface);
-  if (presentModes.empty())
-  {
-    throw "No surface presentModes offered by Vulkan!";
-  }
+  RESULT_HANDLER_EX(presentModes.empty(), VK_ERROR_INITIALIZATION_FAILED, "No surface presentModes offered by Vulkan!");
 
   SwapChainSupportDetails details {
     .formats = formats,
@@ -106,6 +100,7 @@ void SwapChain::create(GLFWwindow* pWindow, VkDevice device, VkPhysicalDevice ph
 void SwapChain::createKHR(VkSwapchainKHR oldSwapChain /* = VK_NULL_HANDLE */)
 {
   const SwapChainSupportDetails swapChainSupport = querySupport(m_physicalDevice, m_surface);
+
   const VkSurfaceFormatKHR surfaceFormat = chooseSurfaceFormat(swapChainSupport.formats);
   const VkPresentModeKHR presentMode = choosePresentMode(swapChainSupport.presentModes);
   const VkExtent2D extent = chooseExtent(swapChainSupport.capabilities);

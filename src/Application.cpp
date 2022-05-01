@@ -22,22 +22,7 @@ const bool enableValidationLayers = false;
 const bool enableValidationLayers = true;
 #endif
 
-// Since C++11, std::atomic<bool>variables at the global scope are considered thread-safe to access and modify
-static std::atomic<bool> sKeepGoing{ true };
 static std::atomic<bool> swapchainRecreated{ false };
-
-extern std::atomic<float> spin_angle;
-extern std::atomic<float> spin_increment;
-
-void Application::rotateRight()
-{
-  spin_angle += spin_increment;
-}
-
-void Application::rotateLeft()
-{
-  spin_angle -= spin_increment;
-}
 
 Application::Application(std::string appName)
   : m_window(NULL)
@@ -46,8 +31,8 @@ Application::Application(std::string appName)
   , m_appName(appName)
 {
   initWindow();
-  m_keyBoard.init(m_window);
   initVulkan();
+  initKeyBoard();
 }
 
 Application::~Application()
@@ -88,43 +73,6 @@ Application::~Application()
   glfwTerminate();
 }
 
-void Application::run() 
-{
-  // showWindow
-  recreateSwapChain();
-  glfwShowWindow(m_window);
-
-  auto asyncDefault = std::async(std::launch::async, [this]() {
-    while (sKeepGoing.load())
-    {
-      checkWorkerPaused();
-      try
-      {
-        drawFrame();
-      }
-      catch (const VulkanResultException& vkE)
-      {
-        logger << "drawFrame, VkResult exception: "
-          << vkE.file << ":" << vkE.line << ":" << vkE.func << "() " << vkE.source << "() returned " << vkE.result
-          << std::endl;
-      }
-      catch (...)
-      {
-        logger << "drawFrame: unrecognized exception." << std::endl;
-      }
-    }
-  });
-
-  // mainLoop
-  while (!glfwWindowShouldClose(m_window))
-  {
-    //glfwPollEvents();
-    glfwWaitEvents();
-  }
-  sKeepGoing.store(false);
-  vkDeviceWaitIdle(m_device);
-}
-
 void Application::initWindow() 
 {
   glfwInit();
@@ -135,7 +83,7 @@ void Application::initWindow()
   m_window = glfwCreateWindow(WIDTH, HEIGHT, m_appName.c_str(), nullptr, nullptr);
   if (m_window == NULL)
   {
-    throw "Trouble creating GLFW window!";
+    throw std::runtime_error("Trouble creating GLFW window!");
   }
 
   // store window pointer for use by glfwSetFramebufferSizeCallback
@@ -144,25 +92,21 @@ void Application::initWindow()
   // callback function for resize frame
   const auto framebufferResizeCallback = [](GLFWwindow* window, int width, int height)
   {
-    const auto app = reinterpret_cast<Application*>(glfwGetWindowUserPointer(window));
+    const auto app = static_cast<Application*>(glfwGetWindowUserPointer(window));
     const int iconified = glfwGetWindowAttrib(window, GLFW_ICONIFIED);
     const bool isMinimized { iconified == GLFW_TRUE || !width || !height };
 
     if (app->pauseWorker() == std::cv_status::timeout || isMinimized)
     {
-      std::cout << "cant stop" << std::endl;
       return;
     };
 
     if (swapchainRecreated.load())  // already recreated from worker
     {
-      std::cout << "already recreated" << std::endl;
       swapchainRecreated.store(false);
       app->resumeWorker();
       return;
     }
-
-    std::cout << "recreateSwapChain" << std::endl;
     app->recreateSwapChain(width, height);
     app->resumeWorker();
   };
@@ -170,7 +114,7 @@ void Application::initWindow()
 
   //const auto mouseButtonCallback = [](GLFWwindow* window, int button, int action, int mods)
   //{
-  //  auto app = reinterpret_cast<Application*>(glfwGetWindowUserPointer(window));
+  //  auto app = static_cast<Application*>(glfwGetWindowUserPointer(window));
   //  if (button == GLFW_MOUSE_BUTTON_LEFT && action == GLFW_PRESS)
   //  {
   //    std::cout << "mouseButtonCallback" << std::endl;
@@ -194,6 +138,52 @@ void Application::initVulkan()
 
   createDescriptorPool();
   createCommandBuffers();
+}
+
+void Application::initKeyBoard()
+{
+  m_keyBoard.init(m_window);
+}
+
+void Application::run()
+{
+  // showWindow
+  recreateSwapChain();
+  glfwShowWindow(m_window);
+
+  std::atomic<bool> keepGoing{ true };
+
+  // render worker
+  auto asyncWorker = std::async(std::launch::async, [this, &keepGoing]() {
+    while (keepGoing.load())
+    {
+      checkWorkerPaused();
+      try
+      {
+        drawFrame();
+      }
+      catch (const VulkanResultException& vkE)
+      {
+        logger << "drawFrame, VkResult exception: "
+          << vkE.file << ":" << vkE.line << ":" << vkE.func << "() " << vkE.source << "() returned " << vkE.result
+          << std::endl;
+      }
+      catch (...)
+      {
+        logger << "drawFrame: unrecognized exception." << std::endl;
+      }
+    }
+    });
+
+  // main window Loop
+  while (!glfwWindowShouldClose(m_window))
+  {
+    //glfwPollEvents();
+    glfwWaitEvents();
+  }
+
+  keepGoing.store(false);
+  vkDeviceWaitIdle(m_device);
 }
 
 void Application::setupDebugMessenger()
@@ -416,7 +406,7 @@ void Application::createGraphicsPipeline()
   auto bindingDescription = m_vertexBuffer.getBindingDescription();
   auto attributeDescriptions = m_vertexBuffer.getAttributeDescriptions();
 
-  const VkPipelineVertexInputStateCreateInfo vertexInputInfo{
+  const VkPipelineVertexInputStateCreateInfo vertexInputInfo {
     .sType = VK_STRUCTURE_TYPE_PIPELINE_VERTEX_INPUT_STATE_CREATE_INFO,
     .vertexBindingDescriptionCount = 1,
     .pVertexBindingDescriptions = &bindingDescription,
@@ -507,7 +497,9 @@ void Application::createCommandPool()
 
   const VkCommandPoolCreateInfo poolInfo {
     .sType = VK_STRUCTURE_TYPE_COMMAND_POOL_CREATE_INFO,
-    .flags = VK_COMMAND_POOL_CREATE_RESET_COMMAND_BUFFER_BIT,
+    //.flags = VK_COMMAND_POOL_CREATE_RESET_COMMAND_BUFFER_BIT, 
+    // To reset the pool the flag RESET_COMMAND_BUFFER_BIT is not required,
+    // and it is actually better to avoid it since it prevents it from using a single large allocator for all buffers in the pool thus increasing memory overhead.
     .queueFamilyIndex = queueFamilyIndices.graphicsFamily.value()
   };
 
@@ -565,7 +557,7 @@ void  Application::createDescriptorSets()
 
 void Application::createCommandBuffers() 
 {
-  m_commandBuffers.resize(MAX_FRAMES_IN_FLIGHT); // TODO
+  m_commandBuffers.resize(MAX_FRAMES_IN_FLIGHT);
 
   const VkCommandBufferAllocateInfo allocInfo {
     .sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_ALLOCATE_INFO,
@@ -589,16 +581,15 @@ void Application::createSyncObjects()
 
   static const VkFenceCreateInfo fenceInfo {
     .sType = VK_STRUCTURE_TYPE_FENCE_CREATE_INFO,
-    .flags = VK_FENCE_CREATE_SIGNALED_BIT
+    //we want to create the fence with the Create Signaled flag, so we can wait on it before using it on a GPU command (for the first frame)
+    .flags = VK_FENCE_CREATE_SIGNALED_BIT 
   };
 
   for (size_t i = 0; i < MAX_FRAMES_IN_FLIGHT; i++) 
   {
-    if (vkCreateSemaphore(m_device, &semaphoreInfo, nullptr, &m_imageAvailableSemaphores[i]) != VK_SUCCESS ||
-      vkCreateSemaphore(m_device, &semaphoreInfo, nullptr, &m_renderFinishedSemaphores[i]) != VK_SUCCESS ||
-      vkCreateFence(m_device, &fenceInfo, nullptr, &m_inFlightFences[i]) != VK_SUCCESS) {
-      throw std::runtime_error("failed to create synchronization objects for a frame!");
-    }
+    RESULT_HANDLER(vkCreateSemaphore(m_device, &semaphoreInfo, nullptr, &m_imageAvailableSemaphores[i]), "vkCreateSemaphore");
+    RESULT_HANDLER(vkCreateSemaphore(m_device, &semaphoreInfo, nullptr, &m_renderFinishedSemaphores[i]), "vkCreateSemaphore");
+    RESULT_HANDLER(vkCreateFence(m_device, &fenceInfo, nullptr, &m_inFlightFences[i]), "vkCreateFence");
   }
 }
 
@@ -655,7 +646,7 @@ void Application::recreateSwapChain(int width /*= 0*/, int height /*= 0*/)
 
     createDescriptorSets();
 
-    static const VkClearValue clearValues[2]{
+    static const VkClearValue clearValues[2] {
       {.color = { { 0.0f, 0.0f, 0.0f, 1.0f } } },
       {.depthStencil = { 1.0f, 0 } }
     };
@@ -707,14 +698,11 @@ void Application::drawFrame()
   do {
     // Get the index of the next available swapchain image:
     result = m_swapChain.acquireNextImageKHR(m_imageAvailableSemaphores[m_currentFrame], &imageIndex);
-    if (result == VK_ERROR_OUT_OF_DATE_KHR)
-    {
+    if (result == VK_ERROR_OUT_OF_DATE_KHR) {
       // swapchain is out of date (e.g. the window was resized) and must be recreated:
       recreateSwapChain();
     }
-    else if (result == VK_SUBOPTIMAL_KHR) {
-      // swapchain is not as optimal as it could be, but the platform's
-      // presentation engine will still present the image correctly.
+    if (result == VK_SUBOPTIMAL_KHR) {
       break;
     }
     else if (result == VK_ERROR_SURFACE_LOST_KHR) {
@@ -773,4 +761,14 @@ void Application::drawFrame()
   else {
     assert(!result);
   }
+}
+
+void Application::rotateRight()
+{
+  m_vertexBuffer.rotateRight();
+}
+
+void Application::rotateLeft()
+{
+  m_vertexBuffer.rotateLeft();
 }

@@ -34,6 +34,16 @@ const std::vector<uint16_t> indices = {
 std::atomic<float> spin_angle = 0.01f;
 std::atomic<float> spin_increment = 0.1f;
 
+void VertexBuffer::rotateRight()
+{
+  spin_angle += spin_increment;
+}
+
+void VertexBuffer::rotateLeft()
+{
+  spin_angle -= spin_increment;
+}
+
 uint32_t VertexBuffer::findMemoryType(VkPhysicalDevice physicalDevice, uint32_t typeFilter, VkMemoryPropertyFlags properties) const
 {
   VkPhysicalDeviceMemoryProperties memProperties;

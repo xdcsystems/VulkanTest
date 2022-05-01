@@ -79,6 +79,9 @@ public:
   VkDescriptorBufferInfo descriptorBufferInfo(size_t index) const;
   void cleanup();
 
+  void rotateRight();
+  void rotateLeft();
+
 private:
   uint32_t findMemoryType(VkPhysicalDevice physicalDevice, uint32_t typeFilter, VkMemoryPropertyFlags properties) const;
   void copyBuffer(VkBuffer srcBuffer, VkBuffer dstBuffer, VkDeviceSize size) const;

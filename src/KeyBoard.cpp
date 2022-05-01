@@ -2,7 +2,6 @@
 #define GLFW_INCLUDE_VULKAN
 #include <GLFW/glfw3.h>
 
-// keyboard block
 #include <algorithm>
 
 #include "Application.h"
@@ -87,26 +86,31 @@ void KeyBoard::init(GLFWwindow* pWindow)
 
   const auto keyCallback = [](GLFWwindow* window, int key, int /*scancode*/, int action, int mods)
   {
-    const auto app = reinterpret_cast<Application*>(glfwGetWindowUserPointer(window));
+    const auto app = static_cast<Application*>(glfwGetWindowUserPointer(window));
 
     if (key == GLFW_KEY_ESCAPE && action == GLFW_PRESS)
     {
       glfwSetWindowShouldClose(window, GLFW_TRUE);
+      return;
     }
 
     if (key == GLFW_KEY_ENTER && action == GLFW_PRESS && mods == GLFW_MOD_ALT)
     {
       KeyBoard::toggleFullscreen(window);
-    }
-    if (key == GLFW_KEY_Q) 
-    {
-      app->rotateRight();
-    }
-    if (key == GLFW_KEY_E)
-    {
-      app->rotateLeft();
+      return;
     }
 
+    if (key == GLFW_KEY_Q && (action == GLFW_PRESS || action == GLFW_REPEAT))
+    {
+      app->rotateRight();
+      return;
+    }
+
+    if (key == GLFW_KEY_E && (action == GLFW_PRESS || action == GLFW_REPEAT))
+    {
+      app->rotateLeft();
+      return;
+    }
   };
   glfwSetKeyCallback(pWindow, keyCallback);
 }
