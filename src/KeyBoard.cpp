@@ -111,6 +111,13 @@ void KeyBoard::init(GLFWwindow* pWindow)
       app->rotateLeft();
       return;
     }
+
+    if (key == GLFW_KEY_SPACE && (action == GLFW_PRESS))
+    {
+      app->rotateToggle();
+      return;
+    }
+
   };
   glfwSetKeyCallback(pWindow, keyCallback);
 }

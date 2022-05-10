@@ -49,8 +49,7 @@ Application::~Application()
 
   vkDestroyDescriptorSetLayout(m_device, m_descriptorSetLayout, nullptr);
 
-  for (size_t i = 0; i < MAX_FRAMES_IN_FLIGHT; i++)
-  {
+  for (size_t i = 0; i < MAX_FRAMES_IN_FLIGHT; i++) {
     vkDestroySemaphore(m_device, m_renderFinishedSemaphores[i], nullptr);
     vkDestroySemaphore(m_device, m_imageAvailableSemaphores[i], nullptr);
     vkDestroyFence(m_device, m_inFlightFences[i], nullptr);
@@ -60,8 +59,7 @@ Application::~Application()
 
   vkDestroyDevice(m_device, nullptr);
 
-  if (enableValidationLayers)
-  {
+  if (enableValidationLayers) {
     DebugUtilsMessenger::instance().destroy(m_instance, nullptr);
   }
 
@@ -81,8 +79,7 @@ void Application::initWindow()
   glfwWindowHint(GLFW_VISIBLE, GLFW_FALSE);
   
   m_window = glfwCreateWindow(WIDTH, HEIGHT, m_appName.c_str(), nullptr, nullptr);
-  if (m_window == NULL)
-  {
+  if (m_window == NULL) {
     throw std::runtime_error("Trouble creating GLFW window!");
   }
 
@@ -90,19 +87,16 @@ void Application::initWindow()
   glfwSetWindowUserPointer(m_window, this);
 
   // callback function for resize frame
-  const auto framebufferResizeCallback = [](GLFWwindow* window, int width, int height)
-  {
+  const auto framebufferResizeCallback = [](GLFWwindow* window, int width, int height) {
     const auto app = static_cast<Application*>(glfwGetWindowUserPointer(window));
     const int iconified = glfwGetWindowAttrib(window, GLFW_ICONIFIED);
     const bool isMinimized { iconified == GLFW_TRUE || !width || !height };
 
-    if (app->pauseWorker() == std::cv_status::timeout || isMinimized)
-    {
+    if (app->pauseWorker() == std::cv_status::timeout || isMinimized) {
       return;
     };
 
-    if (swapchainRecreated.load())  // already recreated from worker
-    {
+    if (swapchainRecreated.load()) { // already recreated from worker
       swapchainRecreated.store(false);
       app->resumeWorker();
       return;
@@ -158,29 +152,24 @@ void Application::run()
 
   // render worker
   auto asyncWorker = std::async(std::launch::async, [this, &keepGoing]() {
-    while (keepGoing.load())
-    {
+    while (keepGoing.load()) {
       checkWorkerPaused();
-      try
-      {
+      try {
         drawFrame();
       }
-      catch (const VulkanResultException& vkE)
-      {
+      catch (const VulkanResultException& vkE) {
         logger << "drawFrame, VkResult exception: "
           << vkE.file << ":" << vkE.line << ":" << vkE.func << "() " << vkE.source << "() returned " << vkE.result
           << std::endl;
       }
-      catch (...)
-      {
+      catch (...) {
         logger << "drawFrame: unrecognized exception." << std::endl;
       }
     }
-    });
+  });
 
   // main window Loop
-  while (!glfwWindowShouldClose(m_window))
-  {
+  while (!glfwWindowShouldClose(m_window)) {
     //glfwPollEvents();
     glfwWaitEvents();
   }
@@ -191,8 +180,7 @@ void Application::run()
 
 void Application::setupDebugMessenger()
 {
-  if (!enableValidationLayers)
-  {
+  if (!enableValidationLayers) {
     return;
   }
 
@@ -201,8 +189,7 @@ void Application::setupDebugMessenger()
 
 void Application::createInstance() 
 {
-  if (enableValidationLayers && !Tools::instance().checkValidationLayerSupport()) 
-  {
+  if (enableValidationLayers && !Tools::instance().checkValidationLayerSupport()) {
     throw std::runtime_error("validation layers requested, but not available!");
   }
 
@@ -225,8 +212,7 @@ void Application::createInstance()
   createInfo.ppEnabledExtensionNames = extensions.data();
 
   VkDebugUtilsMessengerCreateInfoEXT debugCreateInfo{};
-  if (enableValidationLayers) 
-  {
+  if (enableValidationLayers) {
     DebugUtilsMessenger::instance().populateCreateInfo(debugCreateInfo);
     createInfo.enabledLayerCount = static_cast<uint32_t>(validationLayers.size());
     createInfo.ppEnabledLayerNames = validationLayers.data();
@@ -243,8 +229,7 @@ void Application::createSurface()
 
 bool Application::isDeviceSuitable(VkPhysicalDevice device) const
 {
-  if (!Tools::instance().checkDeviceExtensionSupport(device))
-  {
+  if (!Tools::instance().checkDeviceExtensionSupport(device)) {
     return false;
   }
 
@@ -264,12 +249,10 @@ void Application::pickPhysicalDevice()
   }
 
   if (const auto iterator = std::find_if(devices.begin(), devices.end(), [&](const auto& device) { return isDeviceSuitable(device); });
-    iterator != devices.end())
-  {
+    iterator != devices.end()) {
     m_physicalDevice = *iterator;
   }
-  else
-  {
+  else {
     throw std::runtime_error("failed to find a suitable GPU!");
   }
 }
@@ -282,8 +265,7 @@ void Application::createLogicalDevice()
   std::set<uint32_t> uniqueQueueFamilies { indices.graphicsFamily.value(), indices.presentFamily.value() };
 
   const float queuePriority = 1.0f;
-  for (uint32_t queueFamily : uniqueQueueFamilies) 
-  {
+  for (uint32_t queueFamily : uniqueQueueFamilies) {
     queueCreateInfos.push_back({
       .sType = VK_STRUCTURE_TYPE_DEVICE_QUEUE_CREATE_INFO,
       .queueFamilyIndex = queueFamily,
@@ -303,8 +285,7 @@ void Application::createLogicalDevice()
     .pEnabledFeatures = &deviceFeatures
   };
 
-  if (enableValidationLayers) 
-  {
+  if (enableValidationLayers) {
     createInfo.enabledLayerCount = static_cast<uint32_t>(validationLayers.size());
     createInfo.ppEnabledLayerNames = validationLayers.data();
   }
@@ -406,13 +387,13 @@ void Application::createGraphicsPipeline()
 
   const VkPipelineShaderStageCreateInfo shaderStages[] { vertShaderStageInfo, fragShaderStageInfo };
 
-  auto bindingDescription = m_vertexBuffer.getBindingDescription();
-  auto attributeDescriptions = m_vertexBuffer.getAttributeDescriptions();
+  auto bindingDescription = std::move(VertexBuffer::Vertex::getBindingDescription());
+  auto attributeDescriptions = std::move(VertexBuffer::Vertex::getAttributeDescriptions());
 
   const VkPipelineVertexInputStateCreateInfo vertexInputInfo {
     .sType = VK_STRUCTURE_TYPE_PIPELINE_VERTEX_INPUT_STATE_CREATE_INFO,
     .vertexBindingDescriptionCount = 1,
-    .pVertexBindingDescriptions = &bindingDescription,
+    .pVertexBindingDescriptions = bindingDescription.data(),
     .vertexAttributeDescriptionCount = static_cast<uint32_t>(attributeDescriptions.size()),
     .pVertexAttributeDescriptions = attributeDescriptions.data()
   };
@@ -540,11 +521,10 @@ void  Application::createDescriptorSets()
   m_descriptorSets.resize(MAX_FRAMES_IN_FLIGHT);
   RESULT_HANDLER(vkAllocateDescriptorSets(m_device, &allocInfo, m_descriptorSets.data()), "vkAllocateDescriptorSets");
 
-  for (size_t i = 0; i < MAX_FRAMES_IN_FLIGHT; i++)
-  {
+  for (size_t i = 0; i < MAX_FRAMES_IN_FLIGHT; i++) {
     const VkDescriptorBufferInfo bufferInfo = m_vertexBuffer.descriptorBufferInfo(i);
 
-    const VkWriteDescriptorSet descriptorWrite{
+    const VkWriteDescriptorSet descriptorWrite {
       .sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET,
       .dstSet = m_descriptorSets[i],
       .dstBinding = 0,
@@ -588,8 +568,7 @@ void Application::createSyncObjects()
     .flags = VK_FENCE_CREATE_SIGNALED_BIT 
   };
 
-  for (size_t i = 0; i < MAX_FRAMES_IN_FLIGHT; i++) 
-  {
+  for (size_t i = 0; i < MAX_FRAMES_IN_FLIGHT; i++) {
     RESULT_HANDLER(vkCreateSemaphore(m_device, &semaphoreInfo, nullptr, &m_imageAvailableSemaphores[i]), "vkCreateSemaphore");
     RESULT_HANDLER(vkCreateSemaphore(m_device, &semaphoreInfo, nullptr, &m_renderFinishedSemaphores[i]), "vkCreateSemaphore");
     RESULT_HANDLER(vkCreateFence(m_device, &fenceInfo, nullptr, &m_inFlightFences[i]), "vkCreateFence");
@@ -600,8 +579,7 @@ void Application::recreateSwapChain(int width /*= 0*/, int height /*= 0*/)
 {
   int curWidth(width), curHeight(height);
 
-  if (!width || !height)
-  {
+  if (!width || !height) {
     glfwGetFramebufferSize(m_window, &curWidth, &curHeight);
   }
 
@@ -612,12 +590,10 @@ void Application::recreateSwapChain(int width /*= 0*/, int height /*= 0*/)
 
   std::vector<VkSemaphore> oldImageReadySs = std::move(m_imageAvailableSemaphores);
 
-  if (oldSwapChain)
-  {
+  if (oldSwapChain) {
     vkDeviceWaitIdle(m_device);
 
-    for (size_t i = 0; i < MAX_FRAMES_IN_FLIGHT; i++)
-    {
+    for (size_t i = 0; i < MAX_FRAMES_IN_FLIGHT; i++) {
       vkDestroySemaphore(m_device, m_renderFinishedSemaphores[i], nullptr);
       vkDestroyFence(m_device, m_inFlightFences[i], nullptr);
     }
@@ -634,8 +610,7 @@ void Application::recreateSwapChain(int width /*= 0*/, int height /*= 0*/)
     // kill oldSwapChain later, after it is potentially used by vkCreateSwapchainKHR
   }
 
-  if (isMinimized == false)
-  {
+  if (isMinimized == false) {
     m_swapChain.create(m_window, m_device, m_physicalDevice, m_surface, oldSwapChain);
 
     createRenderPass();
@@ -649,8 +624,7 @@ void Application::recreateSwapChain(int width /*= 0*/, int height /*= 0*/)
     };
 
     const auto swapchainImages = enumerate<VkImage>(m_device, m_swapChain.swapChains());
-    for (size_t i = 0; i < swapchainImages.size(); ++i)
-    {
+    for (size_t i = 0; i < swapchainImages.size(); ++i) {
       m_vertexBuffer.renderPass(
         m_swapChain.renderPassInfo(m_renderPass, i, 2, clearValues),
         m_commandBuffers[i],// [(i) % MAX_FRAMES_IN_FLIGHT] ,
@@ -665,14 +639,12 @@ void Application::recreateSwapChain(int width /*= 0*/, int height /*= 0*/)
     m_currentFrame = 0;
   }
 
-  if (oldSwapChain)
-  {
+  if (oldSwapChain) {
     m_swapChain.killSwapchain(oldSwapChain);
 
     // per current spec, we can't really be sure these are not used :/ at least kill them after the swapchain
     // https://github.com/KhronosGroup/Vulkan-Docs/issues/152
-    for (const auto semaphore : oldImageReadySs)
-    {
+    for (const auto semaphore : oldImageReadySs) {
       vkDestroySemaphore(m_device, semaphore, nullptr);
     }
   }
@@ -684,8 +656,7 @@ void Application::drawFrame()
   static uint32_t imageIndex(0);
   static VkResult result(VK_SUCCESS);
 
-  if (m_imageAvailableSemaphores.empty())
-  {
+  if (m_imageAvailableSemaphores.empty()) {
     recreateSwapChain();
   }
   // Ensure no more than FRAME_LAG renderings are outstanding
@@ -746,8 +717,7 @@ void Application::drawFrame()
   
   m_currentFrame = (m_currentFrame + 1) % MAX_FRAMES_IN_FLIGHT;
 
-  if (result == VK_ERROR_OUT_OF_DATE_KHR || result == VK_SUBOPTIMAL_KHR)
-  {
+  if (result == VK_ERROR_OUT_OF_DATE_KHR || result == VK_SUBOPTIMAL_KHR) {
     recreateSwapChain();
   }
   else if (result == VK_ERROR_SURFACE_LOST_KHR) {
@@ -760,12 +730,17 @@ void Application::drawFrame()
   }
 }
 
-void Application::rotateRight()
+void Application::rotateRight() 
 {
   m_vertexBuffer.rotateRight();
 }
 
-void Application::rotateLeft()
+void Application::rotateLeft() 
 {
   m_vertexBuffer.rotateLeft();
+}
+
+void Application::rotateToggle() 
+{
+  m_vertexBuffer.rotateToggle();
 }

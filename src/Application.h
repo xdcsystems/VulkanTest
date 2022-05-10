@@ -28,6 +28,7 @@ public:
 
   void rotateRight();
   void rotateLeft();
+  void rotateToggle();
 
 private:
   void initWindow();

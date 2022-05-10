@@ -1,11 +1,13 @@
 #include <stdexcept>
 #include <vector>
 #include <iostream>
+#include <mutex>
 
 #include "VertexBuffer.h"
 #include "Settings.hpp"
 
 #include "ErrorHandling.hpp"
+
 
 //const std::vector<Vertex> vertices{
 //    { {0.0f, -1.25f, 0.0f}, {1.0f, 0.0f, 0.0f}},
@@ -17,7 +19,7 @@
 //    //{{-0.5f, 0.5f}, {1.0f, 1.0f, 1.0f}}
 //};
 
-const std::vector<Vertex> vertices{
+const std::vector<VertexBuffer::Vertex> vertices {
     { {0.0f, -1.25f}, {1.0f, 0.0f, 0.0f}},
     { {1.1f,  0.58f}, {0.0f, 1.0f, 0.0f}},
     { {-1.1f, 0.58f}, {0.0f, 0.0f, 1.0f}}
@@ -31,8 +33,9 @@ const std::vector<uint16_t> indices = {
     0, 1, 2, // 2, 3, 0
 };
 
-std::atomic<float> spin_angle = 0.01f;
-std::atomic<float> spin_increment = 0.1f;
+std::atomic<bool> rotate = true;
+std::atomic<float> spin_angle = 45.0f;
+std::atomic<float> spin_increment = 1.0f;
 
 void VertexBuffer::rotateRight()
 {
@@ -42,6 +45,24 @@ void VertexBuffer::rotateRight()
 void VertexBuffer::rotateLeft()
 {
   spin_angle -= spin_increment;
+}
+
+void VertexBuffer::rotateToggle()
+{
+  rotate = !rotate;
+  
+  std::scoped_lock lock(m_rotateTimerMutex);
+
+  if (!m_rotateTimer) {
+    return;
+  }
+
+  if (rotate) {
+    m_rotateTimer->Start();
+  }
+  else {
+    m_rotateTimer->Stop();
+  }
 }
 
 uint32_t VertexBuffer::findMemoryType(VkPhysicalDevice physicalDevice, uint32_t typeFilter, VkMemoryPropertyFlags properties) const
@@ -229,10 +250,15 @@ void VertexBuffer::createUniformBuffers()
 
 void VertexBuffer::updateUniformBuffer(uint32_t currentImage, const VkExtent2D& swapChainExtent)
 {
-  static auto startTime = std::chrono::high_resolution_clock::now();
-
-  auto currentTime = std::chrono::high_resolution_clock::now();
-  float time = std::chrono::duration<float, std::chrono::seconds::period>(currentTime - startTime).count();
+  static float time = 0.0f;
+  {
+    std::scoped_lock lock(m_rotateTimerMutex);
+    if (m_rotateTimer == nullptr) {
+      m_rotateTimer = std::make_unique<Timer>();
+      m_rotateTimer->Start();
+    }
+    time = std::chrono::duration<float, std::chrono::seconds::period>(m_rotateTimer->GetElapsed()).count();
+  }
 
   static UniformBufferObject ubo {
     .model = glm::mat4(1.0f)
@@ -258,17 +284,17 @@ void VertexBuffer::updateUniformBuffer(uint32_t currentImage, const VkExtent2D& 
   
   ubo.view = glm::translate(
     glm::mat4(1.0f), 
-    glm::vec3(-0.0f, -0.0f, -2.25f)
+    glm::vec3(0.0f, 0.0f, -2.25f)
   );
   
-  ubo.model = glm::rotate(
-    glm::mat4(1.0f), 
-    //ubo.model,
-    time * glm::radians(45.0f + spin_angle.load()),
-    //glm::radians(spin_angle.load()),
-    glm::vec3(0.0f, 0.0f, 1.0f)
-  );
-
+  if (rotate.load()) {
+    ubo.model = glm::rotate(
+      glm::mat4(1.0f),
+      //ubo.model,
+      time * glm::radians(spin_angle.load()),
+      glm::vec3(0.0f, 0.0f, 1.0f)
+    );
+  }
   ubo.proj[1][1] *= -1; // Flip projection matrix from GL to Vulkan orientation.
 
   void* data;
@@ -337,12 +363,37 @@ void VertexBuffer::renderPass(
   RESULT_HANDLER(vkEndCommandBuffer(commandBuffer), "vkEndCommandBuffer");
 }
 
-VkVertexInputBindingDescription VertexBuffer::getBindingDescription() const
+std::vector<VkVertexInputBindingDescription> VertexBuffer::Vertex::getBindingDescription()
 {
-  return Vertex::getBindingDescription();
+  return { {
+    {
+      .binding = 0,
+      .stride = sizeof(VertexBuffer::Vertex),
+      .inputRate = VK_VERTEX_INPUT_RATE_VERTEX
+    }
+  } };
 }
 
-std::array<VkVertexInputAttributeDescription, 2> VertexBuffer::getAttributeDescriptions() const
+std::vector<VkVertexInputAttributeDescription> VertexBuffer::Vertex::getAttributeDescriptions() 
 {
-  return Vertex::getAttributeDescriptions();
+  return { {
+    {
+      .location = 0,
+      .binding = 0,
+      .format = VK_FORMAT_R32G32B32_SFLOAT,
+      .offset = offsetof(Vertex, pos)
+    },
+    {
+      .location = 1,
+      .binding = 0,
+      .format = VK_FORMAT_R32G32B32_SFLOAT,
+      .offset = offsetof(Vertex, color)
+    },
+    /*  {
+        .location = 2,
+        .binding = 0,
+        .format = VK_FORMAT_R32G32_SFLOAT,
+        .offset = offsetof(Vertex, texCoord)
+      }*/
+    } };
 }

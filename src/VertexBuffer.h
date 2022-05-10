@@ -13,59 +13,29 @@
 
 #include <chrono>
 
-struct UniformBufferObject {
-  alignas(16) glm::mat4 model;
-  alignas(16) glm::mat4 view;
-  alignas(16) glm::mat4 proj;
-};
-
-struct Vertex 
-{
-  //glm::vec3 pos;
-  glm::vec2 pos;
-  glm::vec3 color;
-  //glm::vec2 texCoord;
-
-  static VkVertexInputBindingDescription getBindingDescription()
-  {
-    return {
-      .binding = 0,
-      .stride = sizeof(Vertex),
-      .inputRate = VK_VERTEX_INPUT_RATE_VERTEX
-    };
-  }
-
-  static std::array<VkVertexInputAttributeDescription, 2> getAttributeDescriptions()
-  {
-    return { {
-      {
-        .location = 0,
-        .binding = 0,
-        .format = VK_FORMAT_R32G32B32_SFLOAT,
-        .offset = offsetof(Vertex, pos)
-      },
-      {
-        .location = 1,
-        .binding = 0,
-        .format = VK_FORMAT_R32G32B32_SFLOAT,
-        .offset = offsetof(Vertex, color)
-      },
-    /*  {
-        .location = 2,
-        .binding = 0,
-        .format = VK_FORMAT_R32G32_SFLOAT,
-        .offset = offsetof(Vertex, texCoord)
-      }*/
-    } };
-  }
-};
+#include "Timer.hpp"
 
 class VertexBuffer
 {
 public:
+  struct UniformBufferObject {
+    alignas(16) glm::mat4 model;
+    alignas(16) glm::mat4 view;
+    alignas(16) glm::mat4 proj;
+  };
+
+  struct Vertex
+  {
+    //glm::vec3 pos;
+    glm::vec2 pos;
+    glm::vec3 color;
+    //glm::vec2 texCoord;
+
+    static std::vector<VkVertexInputBindingDescription> getBindingDescription();
+    static std::vector<VkVertexInputAttributeDescription> getAttributeDescriptions();
+  };
+
   void create(VkDevice device, VkPhysicalDevice physicalDevice, VkQueue graphicsQueue, VkCommandPool commandPool);
-  VkVertexInputBindingDescription getBindingDescription() const;
-  std::array<VkVertexInputAttributeDescription, 2> getAttributeDescriptions() const;
   
   void renderPass(
     const VkRenderPassBeginInfo &renderPassInfo, 
@@ -81,6 +51,7 @@ public:
 
   void rotateRight();
   void rotateLeft();
+  void rotateToggle();
 
 private:
   uint32_t findMemoryType(VkPhysicalDevice physicalDevice, uint32_t typeFilter, VkMemoryPropertyFlags properties) const;
@@ -106,4 +77,7 @@ private:
 
   std::vector<VkBuffer> m_uniformBuffers;
   std::vector<VkDeviceMemory> m_uniformBuffersMemory;
+
+  std::unique_ptr<Timer> m_rotateTimer;
+  mutable std::mutex m_rotateTimerMutex; // mutable allows const objects to be locked
 };
